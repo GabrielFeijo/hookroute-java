@@ -37,4 +37,18 @@ class EgressServiceTest {
 
         assertEquals("open", service.circuitSnapshot(service.destination("failed")).state());
     }
+
+    @Test
+    void rejectsRedirectResponses() {
+        var properties = new HookRouteProperties();
+        properties.getEgress().setSimulatedLatencyMs(0);
+        var mapper = new ObjectMapper();
+        var service = new EgressService(HttpClient.newHttpClient(), mapper, properties, Clock.systemUTC());
+        var payload = mapper.readTree("{\"data\":{\"simulate\":{\"statusCode\":302}}}");
+
+        var error = assertThrows(EgressService.EgressException.class,
+                () -> service.dispatch("redirect", payload, "job", "correlation"));
+
+        assertEquals("Egress destination rejected payload with status 302", error.getMessage());
+    }
 }

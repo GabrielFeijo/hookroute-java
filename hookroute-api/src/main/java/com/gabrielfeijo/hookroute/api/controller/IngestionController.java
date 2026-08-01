@@ -2,14 +2,14 @@ package com.gabrielfeijo.hookroute.api.controller;
 
 import com.gabrielfeijo.hookroute.application.IngestionCommand;
 import com.gabrielfeijo.hookroute.application.port.IngestionPort;
-import com.gabrielfeijo.hookroute.api.http.ApiBadRequestException;
+import com.gabrielfeijo.hookroute.api.dto.WebhookIngestionRequest;
 import com.gabrielfeijo.hookroute.domain.WebhookPayload;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,26 +31,11 @@ public class IngestionController {
     @PostMapping("/webhooks")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "Recebe um webhook e publica o evento na fila de processamento")
-    public Map<String, Object> receive(@RequestBody Map<String, Object> request, HttpServletRequest servletRequest) {
-        if (!Set.of("eventId", "eventType", "data").containsAll(request.keySet())) {
-            throw new ApiBadRequestException("Payload contains unsupported root fields.");
-        }
-        Object rawEventType = request.get("eventType");
-        if (!(rawEventType instanceof String eventType) || eventType.isBlank()) {
-            throw new ApiBadRequestException("Payload must contain a non-empty eventType.");
-        }
-        Object rawData = request.get("data");
-        if (!(rawData instanceof Map<?, ?>)) throw new ApiBadRequestException("Payload must contain a data object.");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> data = (Map<String, Object>) rawData;
-        Object rawEventId = request.get("eventId");
-        if (rawEventId != null && (!(rawEventId instanceof String) || ((String) rawEventId).isBlank())) {
-            throw new ApiBadRequestException("eventId must be a non-empty string when provided.");
-        }
-        String eventId = (String) rawEventId;
+    public Map<String, Object> receive(@Valid @RequestBody WebhookIngestionRequest request,
+                                       HttpServletRequest servletRequest) {
         String correlationId = String.valueOf(servletRequest.getAttribute("correlationId"));
         var result = ingestion.ingest(new IngestionCommand(new WebhookPayload(
-                eventType, data, clock.instant(), "ingestion-api", eventId), correlationId));
+                request.eventType(), request.data(), clock.instant(), "ingestion-api", request.eventId()), correlationId));
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("accepted", true);
         response.put("duplicate", result.duplicate());

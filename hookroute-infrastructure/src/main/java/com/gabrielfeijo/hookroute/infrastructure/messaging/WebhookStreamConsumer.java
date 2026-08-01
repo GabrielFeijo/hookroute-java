@@ -6,6 +6,7 @@ import com.gabrielfeijo.hookroute.infrastructure.config.HookRouteProperties;
 import com.gabrielfeijo.hookroute.infrastructure.service.DeliveryLifecycleService;
 import com.gabrielfeijo.hookroute.infrastructure.service.EgressService;
 import jakarta.annotation.PostConstruct;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.time.Duration;
@@ -59,15 +60,20 @@ public class WebhookStreamConsumer {
     @Scheduled(fixedDelayString = "${hookroute.queue.poll-delay-ms:250}")
     public void poll() {
         try {
-            var records = redis.opsForStream().read(
-                    Consumer.from(queue.getConsumerGroup(), queue.getConsumerName()),
-                    StreamReadOptions.empty().count(queue.getBatchSize()),
-                    StreamOffset.create(queue.getMainStream(), ReadOffset.lastConsumed()));
+            var records = readNewMessages();
             if (records == null) return;
             for (var record : records) process(record);
         } catch (RuntimeException error) {
             log.warn("Redis stream polling failed", error);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<MapRecord<String, Object, Object>> readNewMessages() {
+        StreamOffset<String> stream = StreamOffset.create(queue.getMainStream(), ReadOffset.lastConsumed());
+        return redis.opsForStream().read(
+                Consumer.from(queue.getConsumerGroup(), queue.getConsumerName()),
+                StreamReadOptions.empty().count(queue.getBatchSize()), stream);
     }
 
     @Scheduled(fixedDelayString = "${hookroute.queue.recovery-delay-ms:30000}")
@@ -85,35 +91,57 @@ public class WebhookStreamConsumer {
         }
     }
 
-    private void process(MapRecord<String, Object, Object> record) {
+    void process(MapRecord<String, Object, Object> record) {
+        DeliveryJob job;
         try {
-            Object rawBody = record.getValue().get("body");
-            var envelope = objectMapper.readTree(String.valueOf(rawBody));
-            var job = new DeliveryJob(
-                    UUID.fromString(envelope.path("jobId").asText()),
-                    UUID.fromString(envelope.path("eventId").asText()),
-                    envelope.path("attempt").asInt(),
-                    envelope.path("correlationId").asText(null));
-            var work = lifecycle.begin(job);
-            if (work != null) {
-                String destination = egress.destination(work.eventType());
-                try {
-                    egress.dispatch(work.eventType(), work.payload(), job.jobId().toString(), work.correlationId());
-                    lifecycle.delivered(job, destination);
-                } catch (RuntimeException error) {
-                    lifecycle.failed(job, destination, error);
-                }
+            job = parse(record);
+        } catch (Exception error) {
+            deadLetterMalformed(record, error);
+            return;
+        }
+
+        try {
+            var acquisition = lifecycle.begin(job);
+            if (acquisition.retryLater()) {
+                return;
+            }
+            if (acquisition.workItem() != null) {
+                deliver(job, acquisition.workItem());
             }
             acknowledge(record);
-        } catch (Exception error) {
-            log.error("Malformed or unprocessable Redis message recordId={}", record.getId(), error);
-            redis.opsForStream().add(StreamRecords.string(Map.of(
-                    "originalRecordId", record.getId().getValue(),
-                    "failedReason", error.getMessage() == null ? "Unknown failure" : error.getMessage(),
-                    "body", String.valueOf(record.getValue().get("body"))
-            )).withStreamKey(queue.getDeadLetterStream()));
-            acknowledge(record);
+        } catch (RuntimeException error) {
+            log.warn("Redis message processing failed; leaving it pending for retry recordId={}", record.getId(), error);
         }
+    }
+
+    private DeliveryJob parse(MapRecord<String, Object, Object> record) {
+        Object rawBody = record.getValue().get("body");
+        var envelope = objectMapper.readTree(String.valueOf(rawBody));
+        return new DeliveryJob(
+                UUID.fromString(envelope.path("jobId").asString()),
+                UUID.fromString(envelope.path("eventId").asString()),
+                envelope.path("attempt").asInt(),
+                envelope.path("correlationId").asString(null));
+    }
+
+    private void deliver(DeliveryJob job, DeliveryLifecycleService.WorkItem work) {
+        String destination = egress.destination(work.eventType());
+        try {
+            egress.dispatch(work.eventType(), work.payload(), job.jobId().toString(), work.correlationId());
+            lifecycle.delivered(job, destination);
+        } catch (EgressService.EgressException error) {
+            lifecycle.failed(job, destination, error);
+        }
+    }
+
+    private void deadLetterMalformed(MapRecord<String, Object, Object> record, Exception error) {
+        log.error("Malformed Redis message recordId={}", record.getId(), error);
+        redis.opsForStream().add(StreamRecords.string(Map.of(
+                "originalRecordId", record.getId().getValue(),
+                "failedReason", error.getMessage() == null ? "Unknown failure" : error.getMessage(),
+                "body", String.valueOf(record.getValue().get("body"))
+        )).withStreamKey(queue.getDeadLetterStream()));
+        acknowledge(record);
     }
 
     private void acknowledge(MapRecord<String, Object, Object> record) {

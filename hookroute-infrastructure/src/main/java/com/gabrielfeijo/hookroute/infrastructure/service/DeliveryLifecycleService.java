@@ -37,33 +37,33 @@ public class DeliveryLifecycleService {
     }
 
     @Transactional
-    public WorkItem begin(DeliveryJob job) {
-        var previous = attempts.findByJobIdAndAttemptNumber(job.jobId(), job.attempt());
-        if (previous.isPresent() && !previous.get().status.equals("processing")) return null;
-        WebhookEventEntity event = events.findById(job.eventId()).orElseThrow(() -> new IllegalArgumentException("Event not found"));
-        if (previous.isEmpty()) {
-            var attempt = new DeliveryAttemptEntity();
-            attempt.id = UUID.randomUUID();
-            attempt.eventId = event.id;
-            attempt.jobId = job.jobId();
-            attempt.attemptNumber = job.attempt();
-            attempt.status = "processing";
-            attempt.startedAt = clock.instant();
-            attempts.save(attempt);
-        }
+    public Acquisition begin(DeliveryJob job) {
+        WebhookEventEntity event = findEventForUpdate(job.eventId());
+        if (!isCurrentJob(event, job)) return Acquisition.ignored();
+
+        var now = clock.instant();
+        int acquired = attempts.acquire(UUID.randomUUID(), event.id, job.jobId(), job.attempt(), now,
+                now.minusMillis(properties.getQueue().getVisibilityTimeoutMs()));
+        if (acquired == 0) return acquisitionAfterConflict(job);
+
         event.status = WebhookEventStatus.PROCESSING.value();
-        event.updatedAt = clock.instant();
-        events.save(event);
-        return new WorkItem(event.eventType, objectMapper.readTree(event.payload), event.correlationId);
+        event.updatedAt = now;
+        var work = new WorkItem(event.eventType, objectMapper.readTree(event.payload), event.correlationId);
+        return Acquisition.acquired(work);
     }
 
     @Transactional
     public void delivered(DeliveryJob job, String destination) {
         var attempt = attempts.findByJobIdAndAttemptNumber(job.jobId(), job.attempt()).orElseThrow();
+        var event = findEventForUpdate(job.eventId());
+        if (!isCurrentJob(event, job)) {
+            supersede(attempt, destination, null);
+            return;
+        }
+
         attempt.status = "delivered";
         attempt.destination = destination;
         attempt.finishedAt = clock.instant();
-        var event = events.findById(job.eventId()).orElseThrow();
         event.status = WebhookEventStatus.DELIVERED.value();
         event.lastError = null;
         event.updatedAt = clock.instant();
@@ -72,28 +72,69 @@ public class DeliveryLifecycleService {
     @Transactional
     public void failed(DeliveryJob job, String destination, RuntimeException error) {
         var attempt = attempts.findByJobIdAndAttemptNumber(job.jobId(), job.attempt()).orElseThrow();
+        var event = findEventForUpdate(job.eventId());
+        if (!isCurrentJob(event, job)) {
+            supersede(attempt, destination, error.getMessage());
+            return;
+        }
+
         attempt.destination = destination;
         attempt.error = error.getMessage();
         attempt.finishedAt = clock.instant();
-        var event = events.findById(job.eventId()).orElseThrow();
         event.lastError = error.getMessage();
         event.updatedAt = clock.instant();
 
         if (job.attempt() < DeliveryJob.MAX_ATTEMPTS) {
-            attempt.status = "failed";
-            event.status = WebhookEventStatus.FAILED.value();
-            ObjectNode envelope = ingestion.envelope(event, job.jobId(), job.attempt() + 1);
-            outbox.save(ingestion.newOutbox(event.id, properties.getQueue().getMainStream(), envelope,
-                    clock.instant().plusMillis(job.nextBackoffMillis())));
-        } else {
-            attempt.status = "dead_lettered";
-            event.status = WebhookEventStatus.DEAD_LETTERED.value();
-            ObjectNode envelope = ingestion.envelope(event, job.jobId(), job.attempt());
-            envelope.put("failedReason", error.getMessage());
-            envelope.put("failedAt", clock.instant().toString());
-            outbox.save(ingestion.newOutbox(event.id, properties.getQueue().getDeadLetterStream(), envelope, clock.instant()));
+            scheduleRetry(job, attempt, event);
+            return;
         }
+        deadLetter(job, attempt, event, error);
+    }
+
+    private Acquisition acquisitionAfterConflict(DeliveryJob job) {
+        var attempt = attempts.findByJobIdAndAttemptNumber(job.jobId(), job.attempt()).orElseThrow();
+        return "processing".equals(attempt.status) ? Acquisition.busy() : Acquisition.ignored();
+    }
+
+    private void scheduleRetry(DeliveryJob job, DeliveryAttemptEntity attempt, WebhookEventEntity event) {
+        attempt.status = "failed";
+        event.status = WebhookEventStatus.FAILED.value();
+        ObjectNode envelope = ingestion.envelope(event, job.jobId(), job.attempt() + 1);
+        outbox.save(ingestion.newOutbox(event.id, properties.getQueue().getMainStream(), envelope,
+                clock.instant().plusMillis(job.nextBackoffMillis())));
+    }
+
+    private void deadLetter(DeliveryJob job, DeliveryAttemptEntity attempt, WebhookEventEntity event,
+                            RuntimeException error) {
+        attempt.status = "dead_lettered";
+        event.status = WebhookEventStatus.DEAD_LETTERED.value();
+        ObjectNode envelope = ingestion.envelope(event, job.jobId(), job.attempt());
+        envelope.put("failedReason", error.getMessage());
+        envelope.put("failedAt", clock.instant().toString());
+        outbox.save(ingestion.newOutbox(event.id, properties.getQueue().getDeadLetterStream(), envelope, clock.instant()));
+    }
+
+    private WebhookEventEntity findEventForUpdate(UUID eventId) {
+        return events.findByIdForUpdate(eventId)
+                .orElseThrow(() -> new IllegalArgumentException("Event not found"));
+    }
+
+    private boolean isCurrentJob(WebhookEventEntity event, DeliveryJob job) {
+        return job.jobId().toString().equals(event.jobId);
+    }
+
+    private void supersede(DeliveryAttemptEntity attempt, String destination, String error) {
+        attempt.status = "superseded";
+        attempt.destination = destination;
+        attempt.error = error;
+        attempt.finishedAt = clock.instant();
     }
 
     public record WorkItem(String eventType, tools.jackson.databind.JsonNode payload, String correlationId) {}
+
+    public record Acquisition(WorkItem workItem, boolean retryLater) {
+        static Acquisition acquired(WorkItem workItem) { return new Acquisition(workItem, false); }
+        static Acquisition ignored() { return new Acquisition(null, false); }
+        static Acquisition busy() { return new Acquisition(null, true); }
+    }
 }

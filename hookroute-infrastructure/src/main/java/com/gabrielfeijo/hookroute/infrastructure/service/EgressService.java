@@ -41,8 +41,7 @@ public class EgressService {
         long startedAt = clock.millis();
         try {
             int statusCode = dispatchPayload(destination, payload, jobId, correlationId);
-            if (statusCode >= 500) throw new EgressException("Egress destination failed with status " + statusCode);
-            if (statusCode >= 400) throw new EgressException("Egress destination rejected payload with status " + statusCode);
+            requireSuccessfulStatus(statusCode);
             synchronized (circuit) {
                 circuit.state = "closed";
                 circuit.failures = 0;
@@ -59,6 +58,14 @@ public class EgressService {
             }
             throw error;
         }
+    }
+
+    private void requireSuccessfulStatus(int statusCode) {
+        if (statusCode >= 200 && statusCode < 300) return;
+        if (statusCode >= 500) {
+            throw new EgressException("Egress destination failed with status " + statusCode);
+        }
+        throw new EgressException("Egress destination rejected payload with status " + statusCode);
     }
 
     public String destination(String eventType) {

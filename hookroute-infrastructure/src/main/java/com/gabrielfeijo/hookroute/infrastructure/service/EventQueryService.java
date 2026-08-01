@@ -55,7 +55,7 @@ public class EventQueryService {
                                    String status, String eventType, String jobId, boolean failuresOnly) {
         var predicates = new ArrayList<Predicate>();
         if (failuresOnly) predicates.add(root.get("status").in("failed", "dead_lettered"));
-        else if (status != null) predicates.add(cb.equal(root.get("status"), status));
+        if (!failuresOnly && status != null) predicates.add(cb.equal(root.get("status"), status));
         if (eventType != null) predicates.add(cb.equal(root.get("eventType"), eventType));
         if (jobId != null) predicates.add(cb.equal(root.get("jobId"), jobId));
         return predicates.toArray(Predicate[]::new);
