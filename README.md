@@ -174,44 +174,6 @@ Egress + Circuit Breaker
 External Destination
 ```
 
-### Fluxo de Ingestão e Entrega
-
-1. A API valida `eventId`, `eventType` e `data`, além da assinatura HMAC quando configurada.
-2. O serviço de ingestão deduplica `eventId` sob lock transacional do PostgreSQL.
-3. Evento e outbox são persistidos na mesma transação; a API responde `202 Accepted`.
-4. O publisher seleciona mensagens vencidas com lock, publica no Redis Stream e registra o resultado.
-5. O worker adquire exclusivamente a combinação `jobId + attempt` por lease no banco.
-6. A entrega externa é realizada com `Idempotency-Key` e `X-Correlation-ID`.
-7. Sucesso, retry ou DLQ são persistidos antes de a mensagem Redis ser confirmada.
-
-Se o PostgreSQL estiver temporariamente indisponível durante o processamento, a mensagem permanece pendente. Redis e banco cooperam para recuperação sem permitir que duas instâncias executem simultaneamente a mesma tentativa.
-
----
-
-## 🔄 Lifecycle dos Eventos
-
-Cada webhook pode passar pelos seguintes estados:
-
-```text
-received -> queued -> processing -> delivered
-                         |
-                         v
-                       failed -> retry -> processing
-                         |
-                         v
-                  dead_lettered
-```
-
-O PostgreSQL mantém três estruturas principais:
-
-| Tabela | Responsabilidade |
-| --- | --- |
-| `webhook_event` | Estado atual, payload, origem, idempotência, correlation ID e timestamps. |
-| `event_delivery_attempt` | Histórico durável de cada job/tentativa, incluindo destino, erro e duração. |
-| `outbox_message` | Publicação transacional para o stream principal ou DLQ, com retry próprio. |
-
-Um replay gera um novo `jobId`, restaura o evento para `queued` e torna mensagens anteriores obsoletas. Tentativas antigas são reconhecidas sem executar novamente o webhook ou sobrescrever o estado atual.
-
 ---
 
 ## 🔧 Configuração de Ambiente
