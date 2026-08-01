@@ -3,6 +3,7 @@
 ## Preserved
 
 - Public endpoints, HTTP status codes, response fields and lifecycle values.
+- The ingestion OpenAPI contract exposes the typed `eventId`, `eventType` and `data` fields and rejects unknown fields.
 - Optional HMAC based on the exact raw body and timestamp tolerance.
 - Idempotency through producer `eventId`.
 - Five delivery attempts, exponential backoff, DLQ, replay, simulated/real egress and circuit breaker.
@@ -17,6 +18,7 @@
 - Attempts and replays have durable history in `event_delivery_attempt`.
 - Correlation ID is persisted and propagated to worker and destination.
 - Real egress sends `Idempotency-Key`; delivery remains at-least-once.
+- Worker attempts use a database-backed lease; duplicate and superseded jobs are acknowledged without dispatch.
 - Actuator exposes production-oriented readiness, liveness and Prometheus metrics.
 
 The event query payload intentionally excludes the internal attempt and outbox tables to keep the original API contract.
