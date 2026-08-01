@@ -15,22 +15,6 @@ O **HookRoute Java** recebe webhooks com baixa latência, persiste o evento e su
 
 Esta implementação preserva o contrato público do [HookRoute NestJS](https://github.com/GabrielFeijo/hookroute) e explora recursos do ecossistema Java para oferecer uma arquitetura modular, resiliente e operacionalmente segura.
 
-### 🎯 Destaques Técnicos
-
-- **Ingestão leve**: valida o DTO, registra auditoria e responde sem executar chamadas externas.
-- **Transactional outbox**: evento e mensagem são persistidos atomicamente no PostgreSQL.
-- **Processamento assíncrono**: Redis Streams com consumer group, recuperação de mensagens pendentes e worker separado.
-- **Entrega at-least-once**: falhas transitórias permanecem pendentes para nova tentativa.
-- **Idempotência em camadas**: deduplicação por `eventId` e aquisição exclusiva por job/tentativa com lease no banco.
-- **Auditoria persistente**: lifecycle do evento e histórico de tentativas armazenados via JPA/Hibernate.
-- **Retries exponenciais**: até cinco tentativas, com backoff de 1, 2, 4 e 8 segundos.
-- **Replay operacional**: reenfileiramento seguro com um novo `jobId` e rejeição de jobs obsoletos.
-- **Dead Letter Queue**: falhas definitivas são publicadas em `webhook-events-dlq`.
-- **Egress resiliente**: modo simulado ou real, timeout, idempotency key e circuit breaker por destino.
-- **Segurança HMAC**: assinatura opcional do corpo bruto com tolerância temporal contra replay attack.
-- **Observabilidade**: health checks, métricas operacionais, Actuator, Prometheus, logs estruturados e correlation ID.
-- **Qualidade automatizada**: Maven Enforcer, testes JUnit 5, build multi-módulo e CI no GitHub Actions.
-
 ---
 
 ## 🌐 Demonstração Local
@@ -143,7 +127,6 @@ hookroute-java/
 │       └── http/                      # HMAC, correlation ID e erros
 │
 ├── hookroute-worker/                  # Processo dedicado de publicação e entrega
-├── docs/PARITY.md                     # Paridade e diferenças para o NestJS
 ├── docker-compose.yml                 # PostgreSQL, Redis, API e worker
 ├── Dockerfile.api                     # Imagem não-root da API
 ├── Dockerfile.worker                  # Imagem não-root do worker
@@ -231,169 +214,6 @@ Um replay gera um novo `jobId`, restaura o evento para `queued` e torna mensagen
 
 ---
 
-## 🔌 Endpoints
-
-### Ingestão
-
-```http
-POST /api/ingestion/webhooks
-```
-
-Recebe um webhook, valida o contrato, persiste evento e outbox e retorna `202 Accepted`.
-
-```bash
-curl -X POST http://localhost:3000/api/ingestion/webhooks \
-  -H 'Content-Type: application/json' \
-  -H 'x-correlation-id: demo-1' \
-  -d '{
-    "eventId": "evt_123",
-    "eventType": "order.created",
-    "data": {
-      "id": "abc-123",
-      "amount": 129.9
-    }
-  }'
-```
-
-Resposta esperada:
-
-```json
-{
-  "accepted": true,
-  "duplicate": false,
-  "statusCode": 202,
-  "message": "Payload received and queued for downstream processing.",
-  "jobId": "...",
-  "eventId": "...",
-  "payload": {
-    "eventType": "order.created",
-    "data": {
-      "id": "abc-123",
-      "amount": 129.9
-    },
-    "receivedAt": "...",
-    "source": "ingestion-api",
-    "idempotencyKey": "evt_123",
-    "auditEventId": "...",
-    "jobId": "..."
-  }
-}
-```
-
-`eventId` é opcional, mas quando enviado funciona como chave de idempotência. Uma nova requisição com o mesmo valor retorna o evento existente com `duplicate: true`, sem criar outro job.
-
-### Eventos
-
-```http
-GET  /api/events
-GET  /api/events/failures
-GET  /api/events/{id}
-POST /api/events/{id}/replay
-```
-
-Filtros disponíveis em `GET /api/events`:
-
-| Parâmetro | Descrição |
-| --- | --- |
-| `status` | `received`, `queued`, `processing`, `delivered`, `failed` ou `dead_lettered`. |
-| `eventType` | Filtra pelo tipo de evento. |
-| `jobId` | Filtra pelo job associado. |
-| `limit` | Quantidade entre 1 e 100; padrão 25. |
-| `offset` | Deslocamento não negativo; padrão 0. |
-
-`GET /api/events/failures` aceita `eventType`, `jobId`, `limit` e `offset`. O replay retorna `202 Accepted` e agenda uma nova entrega a partir do payload persistido.
-
-### Observabilidade
-
-```http
-GET /api/health
-GET /api/metrics
-GET /actuator/health
-GET /actuator/prometheus
-```
-
-O health check público verifica PostgreSQL e Redis. As métricas públicas consolidam estados de eventos, filas e mensagens pendentes do outbox; o Actuator fornece probes e métricas técnicas para integração com a plataforma.
-
----
-
-## 📨 Entrega de Egress
-
-O worker monta o destino final a partir de `WEBHOOK_DESTINATION_BASE_URL` e do `eventType` codificado para URL:
-
-```text
-{WEBHOOK_DESTINATION_BASE_URL}/{eventType}
-```
-
-Por padrão, `EGRESS_MODE=simulated` mantém a entrega local determinística. Para enviar a um webhook real, configure:
-
-```env
-EGRESS_MODE=real
-WEBHOOK_DESTINATION_BASE_URL=https://webhook.site/seu-id-unico
-EGRESS_ALLOW_PAYLOAD_SIMULATION=false
-```
-
-Depois reinicie o worker. Um evento `order.created` será enviado por `POST` para:
-
-```text
-https://webhook.site/seu-id-unico/order.created
-```
-
-No modo real, somente respostas `2xx` são consideradas sucesso. Respostas `3xx`, `4xx`, `5xx`, timeouts e falhas de transporte alimentam o retry e o circuit breaker.
-
-Quando `EGRESS_ALLOW_PAYLOAD_SIMULATION=true`, falhas e latência podem ser simuladas dentro de `data`:
-
-```bash
-curl -X POST http://localhost:3000/api/ingestion/webhooks \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "eventType": "order.failed",
-    "data": {
-      "id": "abc-123",
-      "simulate": {
-        "delayMs": 10,
-        "statusCode": 503
-      }
-    }
-  }'
-```
-
-Desative a simulação por payload em ambientes de produção.
-
----
-
-## 🔐 Assinatura HMAC
-
-Quando `WEBHOOK_SECRET` estiver definido, a API exige os headers:
-
-```text
-x-webhook-timestamp: timestamp em milissegundos
-x-webhook-signature: sha256=<digest hexadecimal>
-```
-
-A assinatura é calculada sobre os bytes exatos de:
-
-```text
-{timestamp}.{rawBody}
-```
-
-Exemplo em shell:
-
-```bash
-BODY='{"eventType":"order.created","data":{"id":"abc-123"}}'
-TIMESTAMP=$(date +%s%3N)
-SIGNATURE=$(printf '%s.%s' "$TIMESTAMP" "$BODY" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | sed 's/^.* /sha256=/')
-
-curl -X POST http://localhost:3000/api/ingestion/webhooks \
-  -H 'Content-Type: application/json' \
-  -H "x-webhook-timestamp: $TIMESTAMP" \
-  -H "x-webhook-signature: $SIGNATURE" \
-  -d "$BODY"
-```
-
-O timestamp deve estar dentro da janela configurada em `WEBHOOK_SIGNATURE_TOLERANCE_MS`. O corpo não pode ser reformatado depois do cálculo da assinatura.
-
----
-
 ## 🔧 Configuração de Ambiente
 
 Use `.env.example` como referência. Para execução direta pelo Maven, exporte o arquivo no shell antes de iniciar API e worker.
@@ -446,26 +266,6 @@ OUTBOX_POLL_DELAY_MS=200
 
 ---
 
-## 📊 Tecnologias Utilizadas
-
-| Tecnologia | Versão | Uso |
-| --- | --- | --- |
-| Java | 21 | Linguagem e virtual threads |
-| Spring Boot | 4.1 | Framework da API e do worker |
-| Spring MVC | gerenciada pelo Spring Boot | API REST e filtros HTTP |
-| Spring Data JPA | gerenciada pelo Spring Boot | Repositories e transações |
-| Hibernate | gerenciada pelo Spring Boot | Mapeamento ORM e validação do schema |
-| Flyway | gerenciada pelo Spring Boot | Migrations versionadas do PostgreSQL |
-| Redis Streams | Redis 7 | Fila principal, consumer group e DLQ |
-| PostgreSQL | 16 | Auditoria, idempotência, leases e outbox |
-| springdoc-openapi | 3.0 | Swagger e contrato OpenAPI |
-| Jackson | 3.x | Serialização e validação estrutural JSON |
-| JUnit Jupiter | gerenciada pelo Spring Boot | Testes unitários e de contrato |
-| Maven | 3.9 | Build multi-módulo e dependências |
-| Docker Compose | - | Infraestrutura e aplicações locais |
-
----
-
 ## 📝 Comandos Disponíveis
 
 ```bash
@@ -489,48 +289,3 @@ docker compose config
 ```
 
 O pipeline de CI executa `./mvnw --batch-mode clean verify`, valida o Compose e constrói separadamente as imagens da API e do worker.
-
----
-
-## 🧪 Fluxo de Teste Real
-
-1. Suba PostgreSQL e Redis com `docker compose up -d postgres redis`.
-2. Exporte `.env` e inicie a API e o worker em terminais separados.
-3. Envie um webhook para `POST /api/ingestion/webhooks`.
-4. Confirme o retorno `202 Accepted` com `jobId`, `eventId` e `x-correlation-id`.
-5. Consulte `GET /api/events` até observar o status `delivered`.
-6. Reenvie o mesmo `eventId` e confirme `duplicate: true` sem um novo job.
-7. Envie `data.simulate.statusCode=503` para exercitar retries e circuit breaker.
-8. Consulte `GET /api/events/failures` para localizar o evento problemático.
-9. Reenfileire o evento com `POST /api/events/{id}/replay`.
-10. Acompanhe o sistema em `GET /api/metrics` e `/actuator/prometheus`.
-
----
-
-## 🛡️ Garantias de Resiliência
-
-- A API nunca entrega webhooks diretamente.
-- Evento e outbox são confirmados ou revertidos juntos.
-- Uma indisponibilidade temporária do Redis não desfaz uma ingestão já aceita.
-- Mensagens só são confirmadas após persistência do resultado ou descarte idempotente comprovado.
-- Mensagens malformadas são isoladas na DLQ; falhas operacionais continuam pendentes.
-- A constraint única `(job_id, attempt_number)` e o lease impedem processamento concorrente da mesma tentativa.
-- O `jobId` atual do evento invalida mensagens antigas depois de um replay.
-- O egress propaga a mesma idempotency key durante as tentativas de um job.
-- Locks pessimistas e optimistic versioning protegem transições concorrentes do lifecycle.
-
-Como em qualquer sistema at-least-once, uma falha depois de o destino externo aceitar o POST e antes de o resultado ser persistido pode provocar uma nova chamada. O consumidor deve respeitar o header `Idempotency-Key` para eliminar esse efeito externo duplicado.
-
----
-
-## 📌 Notas de Produção
-
-- As migrations ficam em `hookroute-infrastructure/src/main/resources/db/migration` e devem ser sempre versionadas.
-- API e worker possuem imagens e portas independentes para escalabilidade separada.
-- As imagens finais usam Java 21 JRE e usuário sem privilégios.
-- Configure `EGRESS_ALLOW_PAYLOAD_SIMULATION=false` fora de ambientes controlados.
-- Proteja endpoints operacionais e Swagger conforme a política do ambiente.
-- Ajuste batch, polling e visibility timeout com testes de carga representativos.
-- Configure coleta externa para logs JSON, Prometheus e tracing distribuído.
-
-Consulte [docs/PARITY.md](docs/PARITY.md) para as diferenças intencionais em relação ao backend NestJS.
