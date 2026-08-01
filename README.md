@@ -67,14 +67,13 @@ As imagens executam API e worker como usuário não-root. PostgreSQL e Redis usa
 
 ### Execução para desenvolvimento
 
-1. **Prepare o ambiente local**
+1. **Crie a configuração local**
 
    ```bash
    cp .env.example .env
-   set -a
-   source .env
-   set +a
    ```
+
+   O Spring Dotenv carrega esse arquivo automaticamente; não use `source .env`.
 
 2. **Suba somente a infraestrutura**
 
@@ -82,20 +81,20 @@ As imagens executam API e worker como usuário não-root. PostgreSQL e Redis usa
    docker compose up -d postgres redis
    ```
 
-3. **Compile e execute os testes**
+3. **Compile, execute os testes e instale os módulos**
 
    ```bash
-   ./mvnw clean verify
+   ./mvnw clean install
    ```
 
 4. **Inicie a API e o worker em terminais separados**
 
    ```bash
-   ./mvnw -pl hookroute-api -am spring-boot:run
+   ./mvnw -f hookroute-api/pom.xml spring-boot:run
    ```
 
    ```bash
-   ./mvnw -pl hookroute-worker -am spring-boot:run
+   ./mvnw -f hookroute-worker/pom.xml spring-boot:run
    ```
 
 O Flyway aplica automaticamente as migrations na inicialização. O Hibernate opera com `ddl-auto=validate` e nunca cria ou altera o schema implicitamente.
@@ -176,55 +175,23 @@ External Destination
 
 ---
 
-## 🔧 Configuração de Ambiente
+## 🔧 Configuração da aplicação
 
-Use `.env.example` como referência. Para execução direta pelo Maven, exporte o arquivo no shell antes de iniciar API e worker.
+API e worker usam o `springboot4-dotenv`. Durante o desenvolvimento, a biblioteca adiciona o `.env` da raiz como um `PropertySource` do Spring; não é necessário exportar o arquivo no shell. Copie `.env.example` para `.env` e ajuste apenas a cópia local, que permanece ignorada pelo Git.
 
-```env
-PORT=3000
-WORKER_MANAGEMENT_PORT=3001
-DATABASE_URL=jdbc:postgresql://localhost:5432/hookroute
-DATABASE_USER=postgres
-DATABASE_PASSWORD=postgres
-REDIS_URL=redis://localhost:6379
+Exemplos de sobrescrita para produção:
 
-WEBHOOK_SECRET=
-WEBHOOK_SIGNATURE_TOLERANCE_MS=300000
-
-EGRESS_MODE=simulated
-WEBHOOK_DESTINATION_BASE_URL=https://example.com/webhooks
-EGRESS_TIMEOUT_MS=3000
-EGRESS_SIMULATED_LATENCY_MS=50
-EGRESS_CIRCUIT_FAILURE_THRESHOLD=3
-EGRESS_CIRCUIT_OPEN_MS=30000
-EGRESS_ALLOW_PAYLOAD_SIMULATION=true
-
-QUEUE_BATCH_SIZE=10
-QUEUE_POLL_DELAY_MS=250
-QUEUE_VISIBILITY_TIMEOUT_MS=30000
-OUTBOX_POLL_DELAY_MS=200
+```bash
+export SPRING_DATASOURCE_URL=jdbc:postgresql://database:5432/hookroute
+export SPRING_DATASOURCE_USERNAME=hookroute
+export SPRING_DATASOURCE_PASSWORD=change-me
+export SPRING_DATA_REDIS_URL=redis://redis:6379
+export HOOKROUTE_SECURITY_WEBHOOK_SECRET=change-me
+export HOOKROUTE_EGRESS_MODE=real
+export HOOKROUTE_EGRESS_ALLOW_PAYLOAD_SIMULATION=false
 ```
 
-| Variável | Descrição |
-| --- | --- |
-| `PORT` | Porta HTTP da API. |
-| `WORKER_MANAGEMENT_PORT` | Porta dos endpoints Actuator do worker. |
-| `DATABASE_URL` | URL JDBC do PostgreSQL. |
-| `DATABASE_USER` / `DATABASE_PASSWORD` | Credenciais do banco. |
-| `REDIS_URL` | URL usada pelo Spring Data Redis. |
-| `WEBHOOK_SECRET` | Segredo opcional para validar HMAC. |
-| `WEBHOOK_SIGNATURE_TOLERANCE_MS` | Janela temporal aceita para a assinatura. |
-| `EGRESS_MODE` | Modo `simulated` ou `real`. |
-| `WEBHOOK_DESTINATION_BASE_URL` | URL base do destino externo. |
-| `EGRESS_TIMEOUT_MS` | Timeout máximo da chamada externa. |
-| `EGRESS_SIMULATED_LATENCY_MS` | Latência padrão no modo simulado. |
-| `EGRESS_CIRCUIT_FAILURE_THRESHOLD` | Falhas consecutivas necessárias para abrir o circuito. |
-| `EGRESS_CIRCUIT_OPEN_MS` | Tempo de permanência do circuito aberto. |
-| `EGRESS_ALLOW_PAYLOAD_SIMULATION` | Permite que o payload controle status e latência simulados. |
-| `QUEUE_BATCH_SIZE` | Máximo de mensagens lidas ou recuperadas por ciclo. |
-| `QUEUE_POLL_DELAY_MS` | Intervalo entre leituras do stream principal. |
-| `QUEUE_VISIBILITY_TIMEOUT_MS` | Tempo para considerar uma tentativa abandonada e liberar seu lease. |
-| `OUTBOX_POLL_DELAY_MS` | Intervalo de publicação do outbox. |
+O relaxed binding do Spring converte, por exemplo, `SPRING_DATASOURCE_URL` em `spring.datasource.url` e `HOOKROUTE_EGRESS_MODE` em `hookroute.egress.mode`. Variáveis reais do sistema têm precedência sobre os valores do `.env`, portanto o mesmo artefato continua adequado para containers e produção.
 
 ---
 
@@ -237,8 +204,8 @@ OUTBOX_POLL_DELAY_MS=200
 ./mvnw package
 
 # Execução local
-./mvnw -pl hookroute-api -am spring-boot:run
-./mvnw -pl hookroute-worker -am spring-boot:run
+./mvnw -f hookroute-api/pom.xml spring-boot:run
+./mvnw -f hookroute-worker/pom.xml spring-boot:run
 
 # Infraestrutura
 docker compose up -d postgres redis

@@ -27,10 +27,10 @@ services:
       context: .
       dockerfile: Dockerfile.api
     environment:
-      DATABASE_URL: jdbc:postgresql://postgres:5432/hookroute
-      DATABASE_USER: postgres
-      DATABASE_PASSWORD: postgres
-      REDIS_URL: redis://redis:6379
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/hookroute
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_REDIS_URL: redis://redis:6379
     ports: ["3000:3000"]
     depends_on:
       postgres: { condition: service_healthy }
@@ -40,11 +40,11 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     environment:
-      DATABASE_URL: jdbc:postgresql://postgres:5432/hookroute
-      DATABASE_USER: postgres
-      DATABASE_PASSWORD: postgres
-      REDIS_URL: redis://redis:6379
-      EGRESS_MODE: simulated
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/hookroute
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_REDIS_URL: redis://redis:6379
+      HOOKROUTE_EGRESS_MODE: simulated
     ports: ["3001:3001"]
     depends_on:
       postgres: { condition: service_healthy }
