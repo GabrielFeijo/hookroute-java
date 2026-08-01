@@ -1,0 +1,55 @@
+server:
+  port: ${WORKER_MANAGEMENT_PORT:3001}
+  shutdown: graceful
+spring:
+  application:
+    name: hookroute-worker
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/hookroute}
+    username: ${DATABASE_USER:postgres}
+    password: ${DATABASE_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+  threads:
+    virtual:
+      enabled: true
+hookroute:
+  worker:
+    enabled: true
+  queue:
+    main-stream: webhook-events
+    dead-letter-stream: webhook-events-dlq
+    consumer-group: hookroute-workers
+    consumer-name: ${HOSTNAME:worker}
+    batch-size: ${QUEUE_BATCH_SIZE:10}
+    poll-delay-ms: ${QUEUE_POLL_DELAY_MS:250}
+    visibility-timeout-ms: ${QUEUE_VISIBILITY_TIMEOUT_MS:30000}
+  outbox:
+    poll-delay-ms: ${OUTBOX_POLL_DELAY_MS:200}
+  egress:
+    mode: ${EGRESS_MODE:simulated}
+    destination-base-url: ${WEBHOOK_DESTINATION_BASE_URL:https://example.com/webhooks}
+    timeout-ms: ${EGRESS_TIMEOUT_MS:3000}
+    simulated-latency-ms: ${EGRESS_SIMULATED_LATENCY_MS:50}
+    circuit-failure-threshold: ${EGRESS_CIRCUIT_FAILURE_THRESHOLD:3}
+    circuit-open-ms: ${EGRESS_CIRCUIT_OPEN_MS:30000}
+    allow-payload-simulation: ${EGRESS_ALLOW_PAYLOAD_SIMULATION:true}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+logging:
+  structured:
+    format:
+      console: logstash
