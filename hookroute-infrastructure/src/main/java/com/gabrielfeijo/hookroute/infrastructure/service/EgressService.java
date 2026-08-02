@@ -61,7 +61,7 @@ public class EgressService {
     }
 
     private void requireSuccessfulStatus(int statusCode) {
-        if (statusCode >= 200 && statusCode < 300) return;
+        if (statusCode < 400) return;
         if (statusCode >= 500) {
             throw new EgressException("Egress destination failed with status " + statusCode);
         }
@@ -85,25 +85,16 @@ public class EgressService {
     private int dispatchPayload(String destination, JsonNode payload, String jobId, String correlationId) {
         JsonNode simulation = payload.path("data").path("simulate");
         boolean requestedSimulation = properties.isAllowPayloadSimulation() && simulation.isObject()
-                && (simulation.has("statusCode") || simulation.has("delayMs"));
-        if (!properties.getMode().equals("real") || requestedSimulation) {
-            int status = simulation.path("statusCode").isNumber() ? simulation.path("statusCode").asInt() : 200;
-            long delay = simulation.path("delayMs").isNumber() ? simulation.path("delayMs").asLong()
-                    : properties.getSimulatedLatencyMs();
-            if (delay > properties.getTimeoutMs()) {
-                sleep(properties.getTimeoutMs());
-                throw new EgressException("Egress dispatch timed out after " + properties.getTimeoutMs() + "ms");
-            }
-            sleep(Math.max(0, delay));
-            return status;
-        }
+                && ((simulation.path("statusCode").isNumber() && simulation.path("statusCode").asInt() != 0)
+                || (simulation.path("delayMs").isNumber() && simulation.path("delayMs").asLong() != 0));
+        if (!"real".equals(properties.getMode()) || requestedSimulation) return dispatchSimulated(payload);
 
         try {
             var request = HttpRequest.newBuilder(URI.create(destination))
                     .timeout(Duration.ofMillis(properties.getTimeoutMs()))
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json")
-                    .header("User-Agent", "HookRoute-Java/0.1.0")
+                    .header("User-Agent", "HookRoute/0.1.0")
                     .header("Idempotency-Key", jobId)
                     .header("X-Correlation-ID", correlationId == null ? "" : correlationId)
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
@@ -115,6 +106,21 @@ public class EgressService {
             if (error instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new EgressException(error.getMessage() == null ? "Egress dispatch failed" : error.getMessage(), error);
         }
+    }
+
+    private int dispatchSimulated(JsonNode payload) {
+        JsonNode simulation = payload.path("data").path("simulate");
+        boolean payloadSimulation = properties.isAllowPayloadSimulation() && simulation.isObject();
+        int status = payloadSimulation && simulation.path("statusCode").isNumber()
+                ? simulation.path("statusCode").asInt() : 200;
+        long delay = payloadSimulation && simulation.path("delayMs").isNumber()
+                ? simulation.path("delayMs").asLong() : properties.getSimulatedLatencyMs();
+        if (delay > properties.getTimeoutMs()) {
+            sleep(properties.getTimeoutMs());
+            throw new EgressException("Egress dispatch timed out after " + properties.getTimeoutMs() + "ms");
+        }
+        sleep(Math.max(0, delay));
+        return status;
     }
 
     private void sleep(long millis) {

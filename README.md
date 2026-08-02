@@ -90,11 +90,11 @@ As imagens executam API e worker como usuário não-root. PostgreSQL e Redis usa
 4. **Inicie a API e o worker em terminais separados**
 
    ```bash
-   ./mvnw -f hookroute-api/pom.xml spring-boot:run
+   ./mvnw -pl hookroute-api -am spring-boot:run
    ```
 
    ```bash
-   ./mvnw -f hookroute-worker/pom.xml spring-boot:run
+   ./mvnw -pl hookroute-worker -am spring-boot:run
    ```
 
 O Flyway aplica automaticamente as migrations na inicialização. O Hibernate opera com `ddl-auto=validate` e nunca cria ou altera o schema implicitamente.
@@ -193,6 +193,8 @@ export HOOKROUTE_EGRESS_ALLOW_PAYLOAD_SIMULATION=false
 
 O relaxed binding do Spring converte, por exemplo, `SPRING_DATASOURCE_URL` em `spring.datasource.url` e `HOOKROUTE_EGRESS_MODE` em `hookroute.egress.mode`. Variáveis reais do sistema têm precedência sobre os valores do `.env`, portanto o mesmo artefato continua adequado para containers e produção.
 
+No modo `simulated`, o worker não realiza chamadas HTTP. No modo `real`, ele envia um `POST` para `HOOKROUTE_EGRESS_DESTINATION_BASE_URL/<eventType>`, com o mesmo comportamento do projeto NestJS de referência. Quando `HOOKROUTE_EGRESS_ALLOW_PAYLOAD_SIMULATION=true`, um payload com `data.simulate.statusCode` ou `data.simulate.delayMs` ainda simula a entrega, inclusive no modo `real`. Use `false` fora de ambientes de teste para garantir que toda entrega em modo `real` faça a chamada HTTP.
+
 ---
 
 ## 📝 Comandos Disponíveis
@@ -204,8 +206,8 @@ O relaxed binding do Spring converte, por exemplo, `SPRING_DATASOURCE_URL` em `s
 ./mvnw package
 
 # Execução local
-./mvnw -f hookroute-api/pom.xml spring-boot:run
-./mvnw -f hookroute-worker/pom.xml spring-boot:run
+./mvnw -pl hookroute-api -am spring-boot:run
+./mvnw -pl hookroute-worker -am spring-boot:run
 
 # Infraestrutura
 docker compose up -d postgres redis

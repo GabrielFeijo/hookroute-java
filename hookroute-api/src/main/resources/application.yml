@@ -1,20 +1,20 @@
 server:
-  port: 3000
+  port: ${API_PORT:3000}
   shutdown: graceful
 spring:
   application:
     name: hookroute-api
   datasource:
-    url: jdbc:postgresql://localhost:5432/hookroute
-    username: postgres
-    password: postgres
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/hookroute}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
   data:
     redis:
-      url: redis://localhost:6379
+      url: ${SPRING_DATA_REDIS_URL:redis://localhost:6379}
   jackson:
     deserialization:
       fail-on-unknown-properties: true
@@ -25,16 +25,16 @@ hookroute:
   worker:
     enabled: false
   security:
-    webhook-secret: ""
-    signature-tolerance-ms: 300000
+    webhook-secret: ${HOOKROUTE_SECURITY_WEBHOOK_SECRET:}
+    signature-tolerance-ms: ${HOOKROUTE_SECURITY_SIGNATURE_TOLERANCE_MS:300000}
   egress:
-    mode: simulated
-    destination-base-url: https://example.com/webhooks
-    timeout-ms: 3000
-    simulated-latency-ms: 50
-    circuit-failure-threshold: 3
-    circuit-open-ms: 30000
-    allow-payload-simulation: true
+    mode: ${HOOKROUTE_EGRESS_MODE:simulated}
+    destination-base-url: ${HOOKROUTE_EGRESS_DESTINATION_BASE_URL:https://example.com/webhooks}
+    timeout-ms: ${HOOKROUTE_EGRESS_TIMEOUT_MS:3000}
+    simulated-latency-ms: ${HOOKROUTE_EGRESS_SIMULATED_LATENCY_MS:50}
+    circuit-failure-threshold: ${HOOKROUTE_EGRESS_CIRCUIT_FAILURE_THRESHOLD:3}
+    circuit-open-ms: ${HOOKROUTE_EGRESS_CIRCUIT_OPEN_MS:30000}
+    allow-payload-simulation: ${HOOKROUTE_EGRESS_ALLOW_PAYLOAD_SIMULATION:true}
 springdoc:
   swagger-ui:
     path: /docs

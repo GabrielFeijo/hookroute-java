@@ -1,20 +1,20 @@
 server:
-  port: 3001
+  port: ${WORKER_MANAGEMENT_PORT:3001}
   shutdown: graceful
 spring:
   application:
     name: hookroute-worker
   datasource:
-    url: jdbc:postgresql://localhost:5432/hookroute
-    username: postgres
-    password: postgres
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/hookroute}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
   data:
     redis:
-      url: redis://localhost:6379
+      url: ${SPRING_DATA_REDIS_URL:redis://localhost:6379}
   threads:
     virtual:
       enabled: true
@@ -25,20 +25,20 @@ hookroute:
     main-stream: webhook-events
     dead-letter-stream: webhook-events-dlq
     consumer-group: hookroute-workers
-    consumer-name: worker
-    batch-size: 10
-    poll-delay-ms: 250
-    visibility-timeout-ms: 30000
+    consumer-name: ${HOOKROUTE_QUEUE_CONSUMER_NAME:worker}
+    batch-size: ${HOOKROUTE_QUEUE_BATCH_SIZE:10}
+    poll-delay-ms: ${HOOKROUTE_QUEUE_POLL_DELAY_MS:250}
+    visibility-timeout-ms: ${HOOKROUTE_QUEUE_VISIBILITY_TIMEOUT_MS:30000}
   outbox:
-    poll-delay-ms: 200
+    poll-delay-ms: ${HOOKROUTE_OUTBOX_POLL_DELAY_MS:200}
   egress:
-    mode: simulated
-    destination-base-url: https://example.com/webhooks
-    timeout-ms: 3000
-    simulated-latency-ms: 50
-    circuit-failure-threshold: 3
-    circuit-open-ms: 30000
-    allow-payload-simulation: true
+    mode: ${HOOKROUTE_EGRESS_MODE:simulated}
+    destination-base-url: ${HOOKROUTE_EGRESS_DESTINATION_BASE_URL:https://example.com/webhooks}
+    timeout-ms: ${HOOKROUTE_EGRESS_TIMEOUT_MS:3000}
+    simulated-latency-ms: ${HOOKROUTE_EGRESS_SIMULATED_LATENCY_MS:50}
+    circuit-failure-threshold: ${HOOKROUTE_EGRESS_CIRCUIT_FAILURE_THRESHOLD:3}
+    circuit-open-ms: ${HOOKROUTE_EGRESS_CIRCUIT_OPEN_MS:30000}
+    allow-payload-simulation: ${HOOKROUTE_EGRESS_ALLOW_PAYLOAD_SIMULATION:true}
 management:
   endpoints:
     web:
