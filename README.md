@@ -24,7 +24,7 @@ Esta implementação preserva o contrato público do [HookRoute NestJS](https://
 | **API** | [localhost:3000/api](http://localhost:3000/api) | Prefixo principal da API HookRoute |
 | **Swagger** | [localhost:3000/docs](http://localhost:3000/docs) | Documentação OpenAPI interativa |
 | **Health Check** | [localhost:3000/api/health](http://localhost:3000/api/health) | Saúde do PostgreSQL e Redis |
-| **Métricas** | [localhost:3000/api/metrics](http://localhost:3000/api/metrics) | Contadores de filas, outbox e eventos |
+| **Métricas** | [localhost:3000/api/metrics](http://localhost:3000/api/metrics) | Contadores protegidos por API key administrativa |
 | **Prometheus** | [localhost:3000/actuator/prometheus](http://localhost:3000/actuator/prometheus) | Métricas técnicas da API |
 | **Worker Health** | [localhost:3001/actuator/health](http://localhost:3001/actuator/health) | Saúde do processo worker |
 | **PostgreSQL** | `localhost:5432` | Persistência local via Docker Compose |
@@ -186,14 +186,12 @@ export SPRING_DATASOURCE_URL=jdbc:postgresql://database:5432/hookroute
 export SPRING_DATASOURCE_USERNAME=hookroute
 export SPRING_DATASOURCE_PASSWORD=change-me
 export SPRING_DATA_REDIS_URL=redis://redis:6379
-export HOOKROUTE_SECURITY_WEBHOOK_SECRET=change-me
+export SPRING_PROFILES_ACTIVE=production
+export HOOKROUTE_SECURITY_WEBHOOK_SECRET=replace-with-at-least-32-random-characters
+export ADMIN_API_KEY=replace-with-at-least-32-random-characters
 export HOOKROUTE_EGRESS_MODE=real
 export HOOKROUTE_EGRESS_ALLOW_PAYLOAD_SIMULATION=false
 ```
-
-O relaxed binding do Spring converte, por exemplo, `SPRING_DATASOURCE_URL` em `spring.datasource.url` e `HOOKROUTE_EGRESS_MODE` em `hookroute.egress.mode`. Variáveis reais do sistema têm precedência sobre os valores do `.env`, portanto o mesmo artefato continua adequado para containers e produção.
-
-No modo `simulated`, o worker não realiza chamadas HTTP. No modo `real`, ele envia um `POST` para `HOOKROUTE_EGRESS_DESTINATION_BASE_URL/<eventType>`, com o mesmo comportamento do projeto NestJS de referência. Quando `HOOKROUTE_EGRESS_ALLOW_PAYLOAD_SIMULATION=true`, um payload com `data.simulate.statusCode` ou `data.simulate.delayMs` ainda simula a entrega, inclusive no modo `real`. Use `false` fora de ambientes de teste para garantir que toda entrega em modo `real` faça a chamada HTTP.
 
 ---
 
