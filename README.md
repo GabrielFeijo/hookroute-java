@@ -188,7 +188,7 @@ export SPRING_DATASOURCE_PASSWORD=change-me
 export SPRING_DATA_REDIS_URL=redis://redis:6379
 export SPRING_PROFILES_ACTIVE=production
 export HOOKROUTE_SECURITY_WEBHOOK_SECRET=replace-with-at-least-32-random-characters
-export ADMIN_API_KEY=replace-with-at-least-32-random-characters
+export HOOKROUTE_SECURITY_ADMIN_API_KEY=replace-with-at-least-32-random-characters
 export HOOKROUTE_EGRESS_MODE=real
 export HOOKROUTE_EGRESS_ALLOW_PAYLOAD_SIMULATION=false
 ```

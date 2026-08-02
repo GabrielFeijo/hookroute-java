@@ -23,11 +23,12 @@ public class AdminApiKeyConfigurationValidator {
         String apiKey = security.getAdminApiKey();
         boolean missing = apiKey == null || apiKey.isBlank();
         if (!missing && apiKey.length() < MINIMUM_KEY_LENGTH) {
-            throw new IllegalStateException("ADMIN_API_KEY must contain at least 32 characters when configured.");
+            throw new IllegalStateException(
+                    "HOOKROUTE_SECURITY_ADMIN_API_KEY must contain at least 32 characters when configured.");
         }
         if (missing && environment.acceptsProfiles(Profiles.of("production"))) {
             throw new IllegalStateException(
-                    "ADMIN_API_KEY is required in production and must contain at least 32 characters.");
+                    "HOOKROUTE_SECURITY_ADMIN_API_KEY is required in production and must contain at least 32 characters.");
         }
     }
 }
