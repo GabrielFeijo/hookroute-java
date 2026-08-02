@@ -4,6 +4,8 @@ import com.gabrielfeijo.hookroute.infrastructure.service.EventQueryService;
 import com.gabrielfeijo.hookroute.infrastructure.service.EventReplayService;
 import com.gabrielfeijo.hookroute.api.http.ApiBadRequestException;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
@@ -17,6 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/events")
+@SecurityRequirement(name = "admin-api-key")
+@ApiResponse(responseCode = "401", description = "Chave administrativa ausente ou inválida.")
 public class EventsController {
     private static final Set<String> STATUSES = Set.of("received", "queued", "processing", "delivered", "failed", "dead_lettered");
     private final EventQueryService queries;

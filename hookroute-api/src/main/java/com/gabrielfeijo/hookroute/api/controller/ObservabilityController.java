@@ -2,6 +2,8 @@ package com.gabrielfeijo.hookroute.api.controller;
 
 import com.gabrielfeijo.hookroute.infrastructure.service.ObservabilityService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,5 +24,7 @@ public class ObservabilityController {
 
     @GetMapping("/metrics")
     @Operation(summary = "Retorna métricas básicas de filas e eventos")
+    @SecurityRequirement(name = "admin-api-key")
+    @ApiResponse(responseCode = "401", description = "Chave administrativa ausente ou inválida.")
     public Map<String, Object> metrics() { return observability.metrics(); }
 }
