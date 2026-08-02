@@ -64,10 +64,13 @@ public class HookRouteProperties {
 
     public static class Security {
         private String webhookSecret = "";
+        private String adminApiKey = "";
         private long signatureToleranceMs = 300000;
 
         public String getWebhookSecret() { return webhookSecret; }
         public void setWebhookSecret(String value) { webhookSecret = value; }
+        public String getAdminApiKey() { return adminApiKey; }
+        public void setAdminApiKey(String value) { adminApiKey = value; }
         public long getSignatureToleranceMs() { return signatureToleranceMs; }
         public void setSignatureToleranceMs(long value) { signatureToleranceMs = value; }
     }
