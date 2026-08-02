@@ -1,5 +1,5 @@
 server:
-  port: ${API_PORT:3000}
+  port: ${API_PORT:8080}
   shutdown: graceful
 spring:
   application:

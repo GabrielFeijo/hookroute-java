@@ -1,5 +1,5 @@
 server:
-  port: ${WORKER_MANAGEMENT_PORT:3001}
+  port: ${WORKER_MANAGEMENT_PORT:8081}
   shutdown: graceful
 spring:
   application:
