@@ -21,12 +21,12 @@ Esta implementação preserva o contrato público do [HookRoute NestJS](https://
 
 | Serviço | URL | Descrição |
 | --- | --- | --- |
-| **API** | [localhost:3000/api](http://localhost:3000/api) | Prefixo principal da API HookRoute |
-| **Swagger** | [localhost:3000/docs](http://localhost:3000/docs) | Documentação OpenAPI interativa |
-| **Health Check** | [localhost:3000/api/health](http://localhost:3000/api/health) | Saúde do PostgreSQL e Redis |
-| **Métricas** | [localhost:3000/api/metrics](http://localhost:3000/api/metrics) | Contadores protegidos por API key administrativa |
-| **Prometheus** | [localhost:3000/actuator/prometheus](http://localhost:3000/actuator/prometheus) | Métricas técnicas da API |
-| **Worker Health** | [localhost:3001/actuator/health](http://localhost:3001/actuator/health) | Saúde do processo worker |
+| **API** | [localhost:8080/api](http://localhost:8080/api) | Prefixo principal da API HookRoute |
+| **Swagger** | [localhost:8080/docs](http://localhost:8080/docs) | Documentação OpenAPI interativa |
+| **Health Check** | [localhost:8080/api/health](http://localhost:8080/api/health) | Saúde do PostgreSQL e Redis |
+| **Métricas** | [localhost:8080/api/metrics](http://localhost:8080/api/metrics) | Contadores protegidos por API key administrativa |
+| **Prometheus** | [localhost:8080/actuator/prometheus](http://localhost:8080/actuator/prometheus) | Métricas técnicas da API |
+| **Worker Health** | [localhost:8081/actuator/health](http://localhost:8081/actuator/health) | Saúde do processo worker |
 | **PostgreSQL** | `localhost:5432` | Persistência local via Docker Compose |
 | **Redis** | `localhost:6379` | Streams e consumer groups locais |
 
@@ -61,7 +61,7 @@ O Maven 3.9 é obtido automaticamente pelo Maven Wrapper incluído no repositór
 
 3. **Acesse a documentação**
 
-   Abra [http://localhost:3000/docs](http://localhost:3000/docs) no navegador.
+   Abra [http://localhost:8080/docs](http://localhost:8080/docs) no navegador.
 
 As imagens executam API e worker como usuário não-root. PostgreSQL e Redis usam volumes persistentes e health checks antes da inicialização das aplicações.
 
