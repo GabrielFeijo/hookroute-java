@@ -26,7 +26,7 @@
 
     <properties>
         <java.version>21</java.version>
-        <springdoc.version>3.1.0</springdoc.version>
+        <springdoc.version>3.2.0</springdoc.version>
         <spring-dotenv.version>5.1.0</spring-dotenv.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <maven.compiler.parameters>true</maven.compiler.parameters>
